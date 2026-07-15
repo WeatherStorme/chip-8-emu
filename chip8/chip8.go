@@ -1,6 +1,8 @@
 // Package chip8 implements the state and behavior of the CHIP-8 virtual machine.
 package chip8
 
+import "fmt"
+
 const (
 	// MemorySize is the total addressable memory. CHIP-8 has 4KB.
 	MemorySize = 4096
@@ -87,4 +89,19 @@ func New() *Machine {
 	}
 	copy(m.Memory[FontStart:], fontSet[:])
 	return m
+}
+
+// MaxROMSize is the largest ROM that fits in memory: everything from
+// ProgramStart to the top of RAM.
+const MaxROMSize = MemorySize - ProgramStart
+
+// Load copies a ROM image into program memory starting at ProgramStart, where
+// the program counter is already positioned. It returns an error if the ROM is
+// too large to fit in the available memory.
+func (m *Machine) Load(rom []byte) error {
+	if len(rom) > MaxROMSize {
+		return fmt.Errorf("rom too large: %d bytes, max %d", len(rom), MaxROMSize)
+	}
+	copy(m.Memory[ProgramStart:], rom)
+	return nil
 }
