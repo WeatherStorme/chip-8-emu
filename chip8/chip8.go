@@ -105,3 +105,90 @@ func (m *Machine) Load(rom []byte) error {
 	copy(m.Memory[ProgramStart:], rom)
 	return nil
 }
+
+// Step fetches, decodes, and executes a single instruction, advancing the
+// machine by one cycle. It returns an error if it encounters an opcode that is
+// not yet implemented, naming the opcode and the address it was fetched from.
+//
+// Only the handful of opcodes needed to run the IBM logo ROM are implemented so
+// far: 00E0, 1NNN, 6XNN, 7XNN, ANNN, and DXYN.
+func (m *Machine) Step() error {
+	// Fetch: opcodes are two bytes, stored big-endian.
+	opcode := uint16(m.Memory[m.PC])<<8 | uint16(m.Memory[m.PC+1])
+	// Advance past the opcode now, so a jump/call simply overwrites PC.
+	m.PC += 2
+
+	// Decode the operand fields (see the standard CHIP-8 opcode table).
+	var (
+		x   = (opcode >> 8) & 0x0F  // 2nd nibble: a register index
+		y   = (opcode >> 4) & 0x0F  // 3rd nibble: a register index
+		n   = opcode & 0x000F       // 4th nibble: a 4-bit immediate
+		nn  = byte(opcode & 0x00FF) // low byte: an 8-bit immediate
+		nnn = opcode & 0x0FFF       // low 12 bits: an address
+	)
+
+	// Execute: switch on the high nibble, with an inner switch for families
+	// that share it.
+	switch opcode & 0xF000 {
+	case 0x0000:
+		switch opcode {
+		case 0x00E0: // 00E0: clear the display
+			m.Display = [DisplayWidth][DisplayHeight]bool{}
+		default:
+			return m.unknownOpcode(opcode)
+		}
+	case 0x1000: // 1NNN: jump to NNN
+		m.PC = nnn
+	case 0x6000: // 6XNN: set VX = NN
+		m.V[x] = nn
+	case 0x7000: // 7XNN: add NN to VX (does not affect the carry flag)
+		m.V[x] += nn
+	case 0xA000: // ANNN: set I = NNN
+		m.I = nnn
+	case 0xD000: // DXYN: draw an N-byte sprite at (VX, VY)
+		m.drawSprite(m.V[x], m.V[y], n)
+	default:
+		return m.unknownOpcode(opcode)
+	}
+	return nil
+}
+
+// unknownOpcode builds the error returned when Step meets an opcode it does not
+// implement. PC has already advanced past the opcode, so the source address is
+// PC-2.
+func (m *Machine) unknownOpcode(opcode uint16) error {
+	return fmt.Errorf("unknown opcode %04X at 0x%03X", opcode, m.PC-2)
+}
+
+// drawSprite implements DXYN with original CHIP-8 semantics: the starting
+// coordinate wraps around the screen, the N-byte sprite at I is XORed onto the
+// display one pixel at a time, pixels that fall past the right or bottom edge
+// are clipped (not wrapped), and VF is set to 1 if any lit pixel is turned off
+// (a collision) or 0 otherwise.
+func (m *Machine) drawSprite(vx, vy byte, height uint16) {
+	startX := int(vx) % DisplayWidth
+	startY := int(vy) % DisplayHeight
+	m.V[0xF] = 0
+
+	for row := 0; row < int(height); row++ {
+		y := startY + row
+		if y >= DisplayHeight { // clip past the bottom edge
+			break
+		}
+		spriteByte := m.Memory[m.I+uint16(row)]
+		for col := 0; col < 8; col++ {
+			x := startX + col
+			if x >= DisplayWidth { // clip past the right edge
+				break
+			}
+			// Sprite bits are read most-significant first (left to right).
+			if spriteByte&(0x80>>col) == 0 {
+				continue
+			}
+			if m.Display[x][y] {
+				m.V[0xF] = 1 // a lit pixel is being turned off: collision
+			}
+			m.Display[x][y] = !m.Display[x][y]
+		}
+	}
+}
