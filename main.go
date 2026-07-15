@@ -3,6 +3,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -28,12 +29,19 @@ func main() {
 }
 
 // run is the real entry point, split out from main so it can return errors
-// (and be tested) instead of calling os.Exit directly. Output is written to out.
+// (and be tested) instead of calling os.Exit directly. By default it opens a
+// window; with -tui it runs to completion and prints the display to out.
 func run(args []string, out io.Writer) error {
-	if len(args) != 1 {
-		return fmt.Errorf("usage: chip8 <rom-file>")
+	fs := flag.NewFlagSet("chip8", flag.ContinueOnError)
+	fs.SetOutput(out)
+	tui := fs.Bool("tui", false, "render to the terminal instead of opening a window")
+	if err := fs.Parse(args); err != nil {
+		return err
 	}
-	path := args[0]
+	if fs.NArg() != 1 {
+		return fmt.Errorf("usage: chip8 [-tui] <rom-file>")
+	}
+	path := fs.Arg(0)
 
 	rom, err := os.ReadFile(path)
 	if err != nil {
@@ -45,7 +53,10 @@ func run(args []string, out io.Writer) error {
 		return fmt.Errorf("loading ROM: %w", err)
 	}
 
-	return execute(m, out)
+	if *tui {
+		return execute(m, out)
+	}
+	return runWindow(m)
 }
 
 // execute steps the machine until it settles into a single-instruction infinite

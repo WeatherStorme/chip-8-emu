@@ -11,6 +11,7 @@ import (
 )
 
 func TestRun(t *testing.T) {
+	// The -tui flag keeps run on the terminal path so tests never open a window.
 	t.Run("loads and runs a valid ROM without error", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "valid.ch8")
 		// 00E0 (clear), then 1202: jump to self at 0x202 so execution settles.
@@ -19,7 +20,7 @@ func TestRun(t *testing.T) {
 			t.Fatalf("writing temp ROM: %v", err)
 		}
 
-		if err := run([]string{path}, io.Discard); err != nil {
+		if err := run([]string{"-tui", path}, io.Discard); err != nil {
 			t.Errorf("run(%q) = %v, want nil", path, err)
 		}
 	})
@@ -30,7 +31,7 @@ func TestRun(t *testing.T) {
 			t.Fatalf("writing temp ROM: %v", err)
 		}
 
-		if err := run([]string{path}, io.Discard); err == nil {
+		if err := run([]string{"-tui", path}, io.Discard); err == nil {
 			t.Error("run on oversized ROM returned nil, want an error")
 		}
 	})
@@ -42,14 +43,14 @@ func TestRun(t *testing.T) {
 	})
 
 	t.Run("errors when too many arguments are given", func(t *testing.T) {
-		if err := run([]string{"a.ch8", "b.ch8"}, io.Discard); err == nil {
+		if err := run([]string{"-tui", "a.ch8", "b.ch8"}, io.Discard); err == nil {
 			t.Error("run with two args returned nil, want a usage error")
 		}
 	})
 
 	t.Run("errors when the file does not exist", func(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "nope.ch8") // never created
-		if err := run([]string{path}, io.Discard); err == nil {
+		if err := run([]string{"-tui", path}, io.Discard); err == nil {
 			t.Errorf("run on missing file returned nil, want an error")
 		}
 	})
